@@ -90,29 +90,49 @@ class ProjectUploader(
 
             if (needBlob.isNotEmpty()) {
                 send(UploadProgress.Preparing("Uploading ${needBlob.size} binary/large files…"))
-                val blobItems = coroutineScope {
-                    val semaphore = Semaphore(PARALLEL_BLOBS)
-                    needBlob.map { entry ->
-                        async {
-                            semaphore.withPermit {
-                                val bytes = entry.file.readBytes()
-                                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                                val blob = api.createBlob(
-                                    owner = owner,
-                                    repo = repo,
-                                    body = CreateBlobRequest(content = base64, encoding = "base64")
-                                )
-                                bump()
-                                TreeItem(
-                                    path = entry.relativePath,
-                                    mode = modeFor(entry.file),
-                                    type = "blob",
-                                    sha = blob.sha,
-                                    content = null
-                                )
+                val blobItems = mutableListOf<TreeItem>()
+                // Batch large files by a byte budget instead of a fixed file-count semaphore.
+                // A handful of huge files (e.g. split WASM/data chunks) held fully in memory at
+                // once — raw bytes + base64 string each — is what was causing OutOfMemoryError
+                // crashes on real devices. Capping in-flight bytes keeps peak memory bounded.
+                var index = 0
+                while (index < needBlob.size) {
+                    var batchBytes = 0L
+                    val batch = mutableListOf<FileEntry>()
+                    while (index < needBlob.size) {
+                        val candidate = needBlob[index]
+                        val size = candidate.file.length()
+                        if (batch.isNotEmpty() && batchBytes + size > BLOB_BYTE_BUDGET) break
+                        batch.add(candidate)
+                        batchBytes += size
+                        index++
+                    }
+                    coroutineScope {
+                        val semaphore = Semaphore(PARALLEL_BLOBS)
+                        val results = batch.map { entry ->
+                            async {
+                                semaphore.withPermit {
+                                    var bytes: ByteArray? = entry.file.readBytes()
+                                    val base64 = Base64.encodeToString(bytes!!, Base64.NO_WRAP)
+                                    bytes = null // allow GC to reclaim the raw copy before the network call
+                                    val blob = api.createBlob(
+                                        owner = owner,
+                                        repo = repo,
+                                        body = CreateBlobRequest(content = base64, encoding = "base64")
+                                    )
+                                    bump()
+                                    TreeItem(
+                                        path = entry.relativePath,
+                                        mode = modeFor(entry.file),
+                                        type = "blob",
+                                        sha = blob.sha,
+                                        content = null
+                                    )
+                                }
                             }
-                        }
-                    }.awaitAll()
+                        }.awaitAll()
+                        blobItems.addAll(results)
+                    }
                 }
                 treeItems.addAll(blobItems)
             }
@@ -146,7 +166,11 @@ class ProjectUploader(
             )
 
             send(UploadProgress.Success(commit.sha))
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // preserve structured-concurrency cancellation; don't swallow it
+        } catch (e: Throwable) {
+            // Throwable (not just Exception) so an OutOfMemoryError from a huge file no longer
+            // crashes the whole app — it's reported as a normal, recoverable upload error instead.
             send(UploadProgress.Error(friendlyError(e), e))
         }
     }.flowOn(Dispatchers.IO)
@@ -249,6 +273,9 @@ class ProjectUploader(
     }
 
     private fun friendlyError(e: Throwable): String {
+        if (e is OutOfMemoryError) {
+            return "Ran out of memory while uploading a large file. Close other apps and try again, or split very large files further."
+        }
         if (e is HttpException) {
             val body = try {
                 e.response()?.errorBody()?.string()?.take(300)
@@ -289,5 +316,10 @@ class ProjectUploader(
     companion object {
         private const val PARALLEL_BLOBS = 12
         private const val MAX_EMBED_BYTES = 100_000
+        // Cap total raw bytes of large files processed concurrently, so a handful of huge
+        // files (each held in memory as raw bytes + a ~33% bigger base64 string at once)
+        // can't blow past the app's heap and crash it. Small/medium files still batch together
+        // freely up to this budget; a single oversized file is still uploaded alone.
+        private const val BLOB_BYTE_BUDGET = 24L * 1024 * 1024
     }
 }
