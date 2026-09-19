@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Include app prefs so login + theme survive reinstall via Android Backup -->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+    <include domain="file" path="datastore/" />
+    <include domain="root" path="shared_prefs/" />
+</full-backup-content>
