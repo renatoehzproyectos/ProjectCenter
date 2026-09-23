@@ -88,11 +88,42 @@ class SecureTokenStore(context: Context) {
 
     fun isLoggedIn(): Boolean = !getAccessToken().isNullOrBlank()
 
+    // --- Vercel Personal Access Token ---
+
+    fun saveVercelToken(token: String) {
+        securePrefs.edit().putString(KEY_VERCEL_TOKEN, token).apply()
+        backupPrefs.edit().putString(KEY_VERCEL_TOKEN, token).apply()
+    }
+
+    fun getVercelToken(): String? =
+        securePrefs.getString(KEY_VERCEL_TOKEN, null)
+            ?: backupPrefs.getString(KEY_VERCEL_TOKEN, null)?.also {
+                securePrefs.edit().putString(KEY_VERCEL_TOKEN, it).apply()
+            }
+
+    fun saveVercelUser(username: String) {
+        securePrefs.edit().putString(KEY_VERCEL_USER, username).apply()
+        backupPrefs.edit().putString(KEY_VERCEL_USER, username).apply()
+    }
+
+    fun getVercelUser(): String? =
+        securePrefs.getString(KEY_VERCEL_USER, null)
+            ?: backupPrefs.getString(KEY_VERCEL_USER, null)
+
+    fun isVercelLoggedIn(): Boolean = !getVercelToken().isNullOrBlank()
+
+    fun clearVercel() {
+        securePrefs.edit().remove(KEY_VERCEL_TOKEN).remove(KEY_VERCEL_USER).apply()
+        backupPrefs.edit().remove(KEY_VERCEL_TOKEN).remove(KEY_VERCEL_USER).apply()
+    }
+
     companion object {
         private const val PREFS_SECURE = "project_center_secure_prefs"
         private const val PREFS_BACKUP = "project_center_backup_prefs"
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_USER_LOGIN = "user_login"
+        private const val KEY_VERCEL_TOKEN = "vercel_access_token"
+        private const val KEY_VERCEL_USER = "vercel_user_login"
     }
 }

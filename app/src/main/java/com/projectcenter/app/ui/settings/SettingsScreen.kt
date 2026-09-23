@@ -71,6 +71,8 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var pat by remember { mutableStateOf("") }
     var showPat by remember { mutableStateOf(false) }
+    var vercelPat by remember { mutableStateOf("") }
+    var showVercelPat by remember { mutableStateOf(false) }
 
     val shape = RoundedCornerShape(8.dp)
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -208,25 +210,76 @@ fun SettingsScreen(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("WEB SESSIONS")
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Open provider login pages to use passkeys or switch accounts. Sessions stay in the browser.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        SectionLabel("VERCEL")
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = { authViewModel.openGitHubLogin() },
-            modifier = Modifier.fillMaxWidth(),
-            shape = shape
-        ) { Text("GitHub login (passkeys)") }
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = { authViewModel.openVercelLogin() },
-            modifier = Modifier.fillMaxWidth(),
-            shape = shape
-        ) { Text("Vercel login (passkeys)") }
+
+        if (auth.vercelLoggedIn) {
+            Text(
+                text = "@${auth.vercelUsername}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "Connected to Vercel",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { authViewModel.logoutVercel() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = shape
+            ) {
+                Text("Sign out")
+            }
+        } else {
+            Text(
+                text = "Sign in with a Personal Access Token to manage and deploy Vercel projects.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (!showVercelPat) {
+                TextButton(onClick = { showVercelPat = true }) {
+                    Text("Enter token instead")
+                }
+            } else {
+                OutlinedTextField(
+                    value = vercelPat,
+                    onValueChange = { vercelPat = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Vercel Personal Access Token") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = shape,
+                    colors = fieldColors
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { authViewModel.signInWithVercelToken(vercelPat) },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    enabled = vercelPat.isNotBlank() && !auth.vercelLoading,
+                    shape = shape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp)
+                ) {
+                    Text(if (auth.vercelLoading) "Signing in…" else "Sign in with token", fontWeight = FontWeight.Medium)
+                }
+                TextButton(onClick = { authViewModel.openVercelLogin() }) {
+                    Text("Create token on Vercel")
+                }
+            }
+
+            auth.vercelError?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))

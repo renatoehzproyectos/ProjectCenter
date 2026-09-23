@@ -6,7 +6,9 @@ import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import com.projectcenter.app.BuildConfig
 import com.projectcenter.app.core.security.SecureTokenStore
+import com.projectcenter.app.data.vercel.VercelRepository
 import com.projectcenter.app.domain.models.GitHubUser
+import com.projectcenter.app.domain.models.VercelUser
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
@@ -96,7 +98,7 @@ class AuthRepository(
 
     /** Open Vercel login (supports GitHub SSO + passkeys on Vercel's page). */
     fun openVercelLoginPage() {
-        val url = Uri.parse("https://vercel.com/login")
+        val url = Uri.parse("https://vercel.com/account/tokens")
         val tabs = CustomTabsIntent.Builder().setShowTitle(true).build()
         tabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         tabs.launchUrl(appContext, url)
@@ -160,6 +162,31 @@ class AuthRepository(
     fun logout() {
         tokenStore.clear()
         pendingState = null
+    }
+
+    // --- Vercel ---
+
+    /**
+     * Sign in with a Vercel Personal Access Token.
+     * Create at: https://vercel.com/account/tokens
+     */
+    suspend fun signInWithVercelToken(token: String): Result<VercelUser> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val trimmed = token.trim()
+                if (trimmed.isBlank()) error("Token is empty")
+                tokenStore.saveVercelToken(trimmed)
+                val user = VercelRepository(tokenStore).getAuthenticatedUser().getOrElse {
+                    tokenStore.clearVercel()
+                    throw it
+                }
+                tokenStore.saveVercelUser(user.username)
+                user
+            }
+        }
+
+    fun logoutVercel() {
+        tokenStore.clearVercel()
     }
 
     private fun exchangeCodeForToken(code: String): TokenResponse {

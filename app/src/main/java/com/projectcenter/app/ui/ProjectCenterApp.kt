@@ -4,11 +4,11 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -30,22 +30,22 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.projectcenter.app.ui.activity.ActivityScreen
 import com.projectcenter.app.ui.browser.BrowserScreen
 import com.projectcenter.app.ui.github.GitHubScreen
 import com.projectcenter.app.ui.projects.navigation.ProjectsFlow
 import com.projectcenter.app.ui.settings.SettingsScreen
+import com.projectcenter.app.ui.vercel.VercelScreen
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     data object Projects : Screen("projects", "Projects", Icons.Filled.Home)
     data object GitHub : Screen("github", "GitHub", Icons.Outlined.Code)
+    data object Vercel : Screen("vercel", "Vercel", Icons.Outlined.Bolt)
     data object Browser : Screen("browser", "Browser", Icons.Outlined.Public)
-    data object Activity : Screen("activity", "Activity", Icons.Filled.History)
     data object Settings : Screen("settings", "Settings", Icons.Filled.Settings)
 }
 
 private val bottomNavItems = listOf(
-    Screen.Projects, Screen.GitHub, Screen.Browser, Screen.Activity, Screen.Settings
+    Screen.Projects, Screen.GitHub, Screen.Vercel, Screen.Browser, Screen.Settings
 )
 
 @Composable
@@ -106,8 +106,8 @@ fun ProjectCenterApp() {
         ) {
             composable(Screen.Projects.route) { ProjectsFlow() }
             composable(Screen.GitHub.route) { GitHubScreen() }
+            composable(Screen.Vercel.route) { VercelScreen() }
             composable(Screen.Browser.route) { BrowserScreen() }
-            composable(Screen.Activity.route) { ActivityScreen() }
             composable(Screen.Settings.route) { SettingsScreen() }
         }
     }

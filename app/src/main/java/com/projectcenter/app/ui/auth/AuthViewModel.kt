@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.projectcenter.app.core.security.SecureTokenStore
 import com.projectcenter.app.data.auth.AuthRepository
 import com.projectcenter.app.domain.models.GitHubUser
+import com.projectcenter.app.domain.models.VercelUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +19,11 @@ data class AuthState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val oauthConfigured: Boolean = false,
-    val info: String? = null
+    val info: String? = null,
+    val vercelLoggedIn: Boolean = false,
+    val vercelUsername: String? = null,
+    val vercelLoading: Boolean = false,
+    val vercelError: String? = null
 )
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,7 +35,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         AuthState(
             isLoggedIn = tokenStore.isLoggedIn(),
             user = tokenStore.getUserLogin()?.let { GitHubUser(0, it, null, null, null) },
-            oauthConfigured = authRepo.isOAuthConfigured()
+            oauthConfigured = authRepo.isOAuthConfigured(),
+            vercelLoggedIn = tokenStore.isVercelLoggedIn(),
+            vercelUsername = tokenStore.getVercelUser()
         )
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
@@ -107,5 +114,32 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearMessages() {
         _state.value = _state.value.copy(error = null, info = null)
+    }
+
+    // --- Vercel ---
+
+    fun signInWithVercelToken(token: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(vercelLoading = true, vercelError = null)
+            authRepo.signInWithVercelToken(token)
+                .onSuccess { user: VercelUser ->
+                    _state.value = _state.value.copy(
+                        vercelLoggedIn = true,
+                        vercelUsername = user.username,
+                        vercelLoading = false
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        vercelLoading = false,
+                        vercelError = e.message ?: "Vercel token sign-in failed"
+                    )
+                }
+        }
+    }
+
+    fun logoutVercel() {
+        authRepo.logoutVercel()
+        _state.value = _state.value.copy(vercelLoggedIn = false, vercelUsername = null)
     }
 }

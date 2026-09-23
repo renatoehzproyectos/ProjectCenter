@@ -21,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -32,7 +35,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +56,7 @@ fun ProjectsScreen(
     onZipSelected: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val zipPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -59,6 +65,16 @@ fun ProjectsScreen(
 
     var hasFileAccess by remember { mutableStateOf(FileAccessPermission.hasAccess(context)) }
     var recentZips by remember { mutableStateOf<List<RecentZipFile>>(emptyList()) }
+    var isReloadingZips by remember { mutableStateOf(false) }
+
+    fun reloadRecentZips() {
+        if (!hasFileAccess) return
+        isReloadingZips = true
+        scope.launch {
+            recentZips = RecentZipScanner.findRecentZips(5)
+            isReloadingZips = false
+        }
+    }
 
     val legacyPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -147,8 +163,27 @@ fun ProjectsScreen(
             Text(
                 text = "Recent ZIPs in Downloads",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
             )
+            if (hasFileAccess) {
+                IconButton(
+                    onClick = { reloadRecentZips() },
+                    enabled = !isReloadingZips,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    if (isReloadingZips) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Reload recent ZIPs",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
         Spacer(modifier = Modifier.height(10.dp))
 
