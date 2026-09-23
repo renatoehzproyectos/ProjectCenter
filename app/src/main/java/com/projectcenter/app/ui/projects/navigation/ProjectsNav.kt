@@ -83,6 +83,7 @@ fun ProjectsFlow(
             )
             if (s.showReplaceWarning) {
                 ReplaceWarningDialog(
+                    filesToDelete = s.confirmation.filesToDelete,
                     onConfirm = { viewModel.onReplaceWarningAccepted() },
                     onDismiss = { viewModel.dismissReplaceWarning() }
                 )

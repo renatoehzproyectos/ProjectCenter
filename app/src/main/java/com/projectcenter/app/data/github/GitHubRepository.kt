@@ -118,6 +118,25 @@ class GitHubRepository(
             runCatching { api.downloadRepositoryZipball(owner, repo, ref) }
         }
 
+    /**
+     * Full list of file paths currently in the repo at [branch] (blobs only, submodules/dirs excluded).
+     * Returns Result.success(emptyList()) for a repo with no commits yet, rather than failing,
+     * since that's a normal state before the first push.
+     */
+    suspend fun getRepositoryFilePaths(owner: String, repo: String, branch: String): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val ref = try {
+                    api.getRef(owner, repo, branch)
+                } catch (e: HttpException) {
+                    if (e.code() == 404) return@runCatching emptyList()
+                    throw Exception(httpMessage(e, "Could not read repository branch"))
+                }
+                val tree = api.getTreeRecursive(owner, repo, ref.`object`.sha)
+                tree.tree.filter { it.type == "blob" }.map { it.path }
+            }
+        }
+
     private fun httpMessage(e: HttpException, prefix: String): String {
         val body = try { e.response()?.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
         return "$prefix: HTTP ${e.code()}${body?.let { " — $it" } ?: ""}"

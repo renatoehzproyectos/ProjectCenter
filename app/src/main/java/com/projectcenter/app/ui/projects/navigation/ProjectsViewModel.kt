@@ -240,6 +240,35 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
 
     private fun buildConfirmation(action: ZipAction, analysis: ZipAnalysis) {
         val zip = currentZip ?: return
+        val update = pendingUpdate
+
+        if (action == ZipAction.UPDATE_PROJECT && update?.mode == UpdateMode.REPLACE) {
+            viewModelScope.launch {
+                val rootDir = File(analysis.selectedRoot?.absolutePath ?: analysis.extractedDir.path)
+                val localPaths = com.projectcenter.app.core.zip.ProjectFileLister
+                    .listRelativePaths(rootDir)
+                    .toSet()
+                val remotePaths = githubRepo
+                    .getRepositoryFilePaths(update.owner, update.repoName, "main")
+                    .getOrElse { emptyList() }
+                    .ifEmpty {
+                        githubRepo.getRepositoryFilePaths(update.owner, update.repoName, "master").getOrElse { emptyList() }
+                    }
+                val filesToDelete = remotePaths.filterNot { it in localPaths }.sorted()
+
+                val confirmation = PushConfirmation(
+                    action = action,
+                    zip = zip,
+                    analysis = analysis,
+                    createConfig = pendingCreate,
+                    updateConfig = pendingUpdate,
+                    filesToDelete = filesToDelete
+                )
+                _state.value = ProjectsUiState.Confirm(confirmation, showReplaceWarning = filesToDelete.isNotEmpty())
+            }
+            return
+        }
+
         val confirmation = PushConfirmation(
             action = action,
             zip = zip,
@@ -247,9 +276,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
             createConfig = pendingCreate,
             updateConfig = pendingUpdate
         )
-        val needsWarning = action == ZipAction.UPDATE_PROJECT &&
-                pendingUpdate?.mode == UpdateMode.REPLACE
-        _state.value = ProjectsUiState.Confirm(confirmation, showReplaceWarning = needsWarning)
+        _state.value = ProjectsUiState.Confirm(confirmation, showReplaceWarning = false)
     }
 
     fun onReplaceWarningAccepted() {

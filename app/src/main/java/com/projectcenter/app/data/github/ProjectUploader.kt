@@ -300,18 +300,9 @@ class ProjectUploader(
 
     private data class FileEntry(val file: File, val relativePath: String)
 
-    private fun collectFiles(root: File): List<FileEntry> {
-        val result = mutableListOf<FileEntry>()
-        root.walkTopDown()
-            .filter { it.isFile }
-            .forEach { file ->
-                val relative = file.relativeTo(root).path.replace('\\', '/')
-                if (relative.isNotBlank()) {
-                    result.add(FileEntry(file, relative))
-                }
-            }
-        return result
-    }
+    private fun collectFiles(root: File): List<FileEntry> =
+        com.projectcenter.app.core.zip.ProjectFileLister.listRelativePaths(root)
+            .map { relative -> FileEntry(File(root, relative), relative) }
 
     companion object {
         private const val PARALLEL_BLOBS = 12

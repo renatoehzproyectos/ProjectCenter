@@ -79,6 +79,14 @@ interface GitHubApi {
         @Body body: CreateTreeRequest
     ): TreeResponseDto
 
+    @GET("repos/{owner}/{repo}/git/trees/{sha}")
+    suspend fun getTreeRecursive(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("sha") sha: String,
+        @Query("recursive") recursive: Int = 1
+    ): TreeGetResponseDto
+
     @POST("repos/{owner}/{repo}/git/commits")
     suspend fun createCommit(
         @Path("owner") owner: String,
@@ -260,6 +268,20 @@ data class TreeItem(
 data class TreeResponseDto(
     val sha: String,
     val url: String
+)
+
+@JsonClass(generateAdapter = true)
+data class TreeGetResponseDto(
+    val sha: String,
+    val tree: List<TreeGetItemDto>,
+    val truncated: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class TreeGetItemDto(
+    val path: String,
+    val type: String, // "blob" (file), "tree" (dir), "commit" (submodule)
+    val sha: String? = null
 )
 
 @JsonClass(generateAdapter = true)

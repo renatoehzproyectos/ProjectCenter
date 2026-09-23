@@ -73,5 +73,6 @@ data class PushConfirmation(
     val zip: SelectedZip,
     val analysis: ZipAnalysis,
     val createConfig: CreateProjectConfig? = null,
-    val updateConfig: UpdateProjectConfig? = null
+    val updateConfig: UpdateProjectConfig? = null,
+    val filesToDelete: List<String> = emptyList()
 )
