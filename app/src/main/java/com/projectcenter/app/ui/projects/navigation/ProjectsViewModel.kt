@@ -577,6 +577,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                         }
                         "failure" -> com.projectcenter.app.core.notifications.NotificationHelper
                             .showWorkflowFailed(app, repo)
+                        else -> { /* cancelled / skipped / null */ }
                     }
                 }
             }
@@ -623,6 +624,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                         "Saved to Downloads as ${result.displayName}"
                     is com.projectcenter.app.core.storage.DownloadsWriter.WriteResult.Error ->
                         "Error: ${result.message}"
+                    else -> "Unknown write result"
                 }
                 val latest = _state.value
                 if (latest is ProjectsUiState.Monitoring) {
@@ -696,6 +698,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                         "Saved to Downloads as ${result.displayName}"
                     is com.projectcenter.app.core.storage.DownloadsWriter.WriteResult.Error ->
                         "Error: ${result.message}"
+                    else -> "Unknown write result"
                 }
                 _state.value = latest.copy(isDownloadingLog = false, importantError = message)
             }

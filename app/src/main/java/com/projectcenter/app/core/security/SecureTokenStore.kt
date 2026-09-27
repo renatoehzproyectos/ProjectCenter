@@ -1,22 +1,21 @@
 package com.projectcenter.app.core.security
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.security.crypto.MasterKeys
 
 /**
- * Secure storage for OAuth tokens. Reused by GitHub and Vercel auth flows.
+ * Secure storage for OAuth tokens. Compatible with security-crypto 1.0.0.
  */
 class SecureTokenStore(context: Context) {
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    private val masterKeyAlias: String = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
+    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
         "project_center_secure",
-        masterKey,
+        masterKeyAlias,
+        context,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )

@@ -10,7 +10,9 @@ data class RecentZipFile(
     val path: String,
     val sizeBytes: Long,
     val lastModified: Long
-)
+) {
+    val file: java.io.File get() = java.io.File(path)
+}
 
 /**
  * Scans /storage/emulated/0/Download for recent .zip files.

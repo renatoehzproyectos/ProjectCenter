@@ -41,6 +41,7 @@ fun PushConfirmationScreen(
             ZipAction.CREATE_PROJECT -> "Create project"
             ZipAction.UPDATE_PROJECT -> "Update project"
             ZipAction.EXPLORE_ZIP -> "Explore"
+            ZipAction.AUTOMATIC_PUSH -> "Automatic push"
         })
 
         when (confirmation.action) {

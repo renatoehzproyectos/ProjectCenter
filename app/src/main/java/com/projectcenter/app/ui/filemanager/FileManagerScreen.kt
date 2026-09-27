@@ -1,12 +1,11 @@
 package com.projectcenter.app.ui.filemanager
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +33,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,12 +52,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.projectcenter.app.core.storage.FileAccessPermission
 import com.projectcenter.app.domain.models.ManagedFile
@@ -81,7 +78,6 @@ fun FileManagerScreen(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshAccessAndLoad() }
 
-    // Re-check access when returning from Settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshAccessAndLoad()
@@ -101,7 +97,6 @@ fun FileManagerScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Header
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "File Manager",
@@ -125,7 +120,7 @@ fun FileManagerScreen(
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(Modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (!state.hasAccess) {
             AccessRequiredCard(
@@ -137,10 +132,9 @@ fun FileManagerScreen(
                     }
                 }
             )
-            return
+            return@Column
         }
 
-        // Search
         OutlinedTextField(
             value = state.searchQuery,
             onValueChange = { viewModel.setSearch(it) },
@@ -152,7 +146,6 @@ fun FileManagerScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Nav row
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = { viewModel.goBack() },
@@ -168,20 +161,23 @@ fun FileManagerScreen(
                 )
                 TextButton(onClick = { viewModel.clearSelection() }) { Text("Clear") }
                 IconButton(onClick = { viewModel.requestDeleteSelected() }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
 
         if (state.isLoading) {
-            Box(Modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            return
+            return@Column
         }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            // Related groups
             if (state.relatedGroups.isNotEmpty() && state.searchQuery.isBlank()) {
                 item {
                     Text(
@@ -241,16 +237,11 @@ fun FileManagerScreen(
         }
     }
 
-    // Dialogs
     state.pendingDelete?.let { pending ->
         AlertDialog(
             onDismissRequest = { viewModel.cancelDelete() },
             title = { Text("Delete ${pending.size} file${if (pending.size == 1) "" else "s"}?") },
-            text = {
-                Column {
-                    pending.forEach { Text("• ${it.name}") }
-                }
-            },
+            text = { Column { pending.forEach { Text("• ${it.name}") } } },
             confirmButton = {
                 Button(onClick = { viewModel.confirmDelete() }) { Text("Delete") }
             },
@@ -268,7 +259,7 @@ fun FileManagerScreen(
                 Column {
                     Text("Move:")
                     prompt.files.forEach { Text("• ${it.name}") }
-                    Spacer(Modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text("Into: ${prompt.destFolder.removePrefix("/storage/emulated/0/")}")
                 }
             },
@@ -288,7 +279,7 @@ fun FileManagerScreen(
             text = {
                 Column {
                     Text(p.existing.name, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text("Existing: ${formatSize(p.existing.sizeBytes)}")
                     Text("New: ${formatSize(p.newSizeBytes)}")
                 }
@@ -339,8 +330,6 @@ fun FileManagerScreen(
             }
         )
     }
-}
-
 
     renameTarget?.let { target ->
         AlertDialog(
@@ -367,6 +356,7 @@ fun FileManagerScreen(
             }
         )
     }
+}
 
 @Composable
 private fun AccessRequiredCard(onRequest: () -> Unit) {
@@ -377,13 +367,13 @@ private fun AccessRequiredCard(onRequest: () -> Unit) {
             .padding(20.dp)
     ) {
         Text("Storage access required", fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             FileAccessPermission.ACCESS_RATIONALE,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRequest) { Text("Grant access") }
     }
 }
@@ -402,11 +392,10 @@ private fun RelatedGroupCard(
             .padding(vertical = 4.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
             .padding(12.dp)
+            .clickable(onClick = onToggleExpand)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggleExpand),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -470,12 +459,19 @@ private fun FileRow(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+            Text(
+                file.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Medium
+            )
             Text(
                 buildString {
                     if (!file.isDirectory) append(formatSize(file.sizeBytes)).append(" · ")
-                    append(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                        .format(Date(file.lastModified)))
+                    append(
+                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                            .format(Date(file.lastModified))
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

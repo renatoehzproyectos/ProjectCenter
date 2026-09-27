@@ -46,11 +46,11 @@ enum class ZipAction {
 
 enum class UpdateMode {
     REPLACE,
-    UPDATE_FILES
+    UPDATE_ONLY
 }
 
 data class CreateProjectConfig(
-    val name: String,
+    val name: String?,
     val isPrivate: Boolean = false,
     val description: String? = null
 )
@@ -83,7 +83,7 @@ data class GitHubUser(
 
 data class Repository(
     val id: Long,
-    val name: String,
+    val name: String?,
     val fullName: String,
     val owner: String,
     val private: Boolean,
@@ -93,7 +93,7 @@ data class Repository(
 )
 
 data class CreateRepoRequest(
-    val name: String,
+    val name: String?,
     val private: Boolean = false,
     val description: String? = null,
     @Json(name = "auto_init") val autoInit: Boolean = true
@@ -101,7 +101,7 @@ data class CreateRepoRequest(
 
 data class Workflow(
     val id: Long,
-    val name: String,
+    val name: String?,
     val path: String,
     val state: String,
     val htmlUrl: String? = null
@@ -109,7 +109,7 @@ data class Workflow(
 
 data class WorkflowRun(
     val id: Long,
-    val name: String,
+    val name: String?,
     val status: String,
     val conclusion: String?,
     val htmlUrl: String?,
@@ -121,14 +121,14 @@ data class WorkflowRun(
 
 data class Job(
     val id: Long,
-    val name: String,
+    val name: String?,
     val status: String,
     val conclusion: String?,
     val steps: List<Step> = emptyList()
 )
 
 data class Step(
-    val name: String,
+    val name: String?,
     val status: String,
     val conclusion: String?,
     val number: Int = 0
@@ -136,7 +136,7 @@ data class Step(
 
 data class Artifact(
     val id: Long,
-    val name: String,
+    val name: String?,
     val sizeInBytes: Long,
     val expired: Boolean,
     val archiveDownloadUrl: String? = null,
@@ -154,7 +154,7 @@ data class VercelUser(
 
 data class VercelProject(
     val id: String,
-    val name: String,
+    val name: String?,
     val framework: String?,
     val linkedRepo: String? = null,
     val latestUrl: String? = null,
@@ -171,7 +171,7 @@ data class VercelDeployment(
 // ── File Manager models ─────────────────────────────────────────────────────
 
 data class ManagedFile(
-    val name: String,
+    val name: String?,
     val path: String,
     val isDirectory: Boolean,
     val sizeBytes: Long,
@@ -180,7 +180,7 @@ data class ManagedFile(
 )
 
 data class RelatedFileGroup(
-    val name: String,
+    val name: String?,
     val files: List<ManagedFile>,
     val confidence: Float
 )
