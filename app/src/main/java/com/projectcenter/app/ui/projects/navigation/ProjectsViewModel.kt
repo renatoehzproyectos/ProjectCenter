@@ -107,6 +107,11 @@ sealed class ProjectsUiState {
         val analysis: ZipAnalysis?,
         val isAnalyzing: Boolean
     ) : ProjectsUiState()
+
+    data class AutomaticPush(
+        val zip: SelectedZip,
+        val config: com.projectcenter.app.domain.models.ProjectPushConfiguration?
+    ) : ProjectsUiState()
 }
 
 class ProjectsViewModel(application: Application) : AndroidViewModel(application) {
@@ -120,6 +125,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
         githubRepo.getApi(),
         File(application.cacheDir, "artifacts").also { it.mkdirs() }
     )
+    private val pushConfigStore = com.projectcenter.app.data.storage.PushConfigStore(application)
 
     private val _state = MutableStateFlow<ProjectsUiState>(ProjectsUiState.Idle)
     val state: StateFlow<ProjectsUiState> = _state.asStateFlow()
@@ -133,9 +139,27 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
     private var lastRepo: String? = null
     private var lastRunId: Long? = null
     private var monitorJob: CoroutineJob? = null
+    private var deployAfterPush: Boolean = false
+    private var skipConfirmation: Boolean = false
 
     fun onZipPicked(uriString: String) {
         viewModelScope.launch {
+            // Support both content:// URIs and absolute file paths from File Manager
+            if (uriString.startsWith("/") || uriString.startsWith("file:")) {
+                val path = uriString.removePrefix("file://")
+                val f = File(path)
+                if (f.exists()) {
+                    val zip = SelectedZip(
+                        uri = f.absolutePath,
+                        displayName = f.name,
+                        sizeBytes = f.length(),
+                        lastModified = f.lastModified()
+                    )
+                    currentZip = zip
+                    _state.value = ProjectsUiState.ActionChoice(zip)
+                }
+                return@launch
+            }
             val uri = Uri.parse(uriString)
             zipStorage.importZip(uri).onSuccess { zip ->
                 currentZip = zip
@@ -147,6 +171,13 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
     fun onActionChosen(action: ZipAction) {
         val zip = currentZip ?: return
         when (action) {
+            ZipAction.AUTOMATIC_PUSH -> {
+                viewModelScope.launch {
+                    val projectName = zip.displayName.removeSuffix(".zip").removeSuffix(".ZIP")
+                    val config = pushConfigStore.findByProjectName(projectName)
+                    _state.value = ProjectsUiState.AutomaticPush(zip, config)
+                }
+            }
             ZipAction.CREATE_PROJECT -> {
                 val suggested = zip.displayName.removeSuffix(".zip").removeSuffix(".ZIP")
                 _state.value = ProjectsUiState.CreateForm(zip, suggested)
@@ -166,6 +197,67 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                     _state.value = ProjectsUiState.Explore(zip, analysis, isAnalyzing = false)
                 }
             }
+        }
+    }
+
+    /** One-tap automatic push using saved association. */
+    fun onAutomaticPush() {
+        val s = _state.value
+        if (s !is ProjectsUiState.AutomaticPush) return
+        val config = s.config ?: return
+        pendingUpdate = UpdateProjectConfig(
+            owner = config.githubOwner,
+            repoName = config.githubRepository,
+            fullName = "${config.githubOwner}/${config.githubRepository}",
+            mode = UpdateMode.REPLACE
+        )
+        skipConfirmation = true
+        analyzeThenContinue(ZipAction.UPDATE_PROJECT)
+    }
+
+    
+    /** Automatic Push followed by Vercel deploy of the same GitHub repo. */
+    fun onAutomaticPushAndDeploy() {
+        deployAfterPush = true
+        onAutomaticPush()
+    }
+
+    private fun triggerVercelDeployIfRequested(owner: String, repoName: String) {
+        if (!deployAfterPush) return
+        deployAfterPush = false
+        viewModelScope.launch {
+            try {
+                val vercelRepo = com.projectcenter.app.data.vercel.VercelRepository(tokenStore)
+                if (!tokenStore.isVercelLoggedIn()) return@launch
+                val full = "$owner/$repoName"
+                vercelRepo.createOrDeployFromGitHub(repoFullName = full)
+            } catch (_: Exception) {
+                // Non-fatal: push already succeeded
+            }
+        }
+    }
+
+    /** Configure association then push — reuses existing repo selection. */
+    fun onConfigureAutomaticPush() {
+        val zip = currentZip ?: return
+        _state.value = ProjectsUiState.SelectRepo(zip, emptyList(), isLoading = true)
+        viewModelScope.launch {
+            val repos = githubRepo.getRepositories().getOrElse { emptyList() }
+            _state.value = ProjectsUiState.SelectRepo(zip, repos, isLoading = false)
+        }
+    }
+
+    /** After a successful manual update, remember the association for next Automatic Push. */
+    fun rememberPushAssociation(owner: String, repo: String, projectName: String, branch: String = "main") {
+        viewModelScope.launch {
+            pushConfigStore.save(
+                com.projectcenter.app.domain.models.ProjectPushConfiguration(
+                    projectName = projectName,
+                    githubOwner = owner,
+                    githubRepository = repo,
+                    branch = branch
+                )
+            )
         }
     }
 
@@ -241,6 +333,24 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
     private fun buildConfirmation(action: ZipAction, analysis: ZipAnalysis) {
         val zip = currentZip ?: return
         val update = pendingUpdate
+
+        // Automatic Push: skip intermediate confirm when association is known and root is clear
+        if (skipConfirmation && action == ZipAction.UPDATE_PROJECT && update != null) {
+            skipConfirmation = false
+            selectedRoot = analysis.selectedRoot
+            val rootPath = analysis.selectedRoot?.absolutePath
+                ?: analysis.extractedDir.absolutePath
+            viewModelScope.launch {
+                val confirmation = PushConfirmation(
+                    action = action,
+                    zip = zip,
+                    analysis = analysis,
+                    updateConfig = update
+                )
+                startUpload(confirmation, File(rootPath))
+            }
+            return
+        }
 
         if (action == ZipAction.UPDATE_PROJECT && update?.mode == UpdateMode.REPLACE) {
             viewModelScope.launch {
@@ -383,6 +493,11 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                     }
                     is ProjectUploader.UploadProgress.Success -> {
                         steps[5] = steps[5].copy(state = StepState.SUCCESS)
+                        // Persist association for Automatic Push
+                        val projectName = confirmation.zip.displayName
+                            .removeSuffix(".zip").removeSuffix(".ZIP")
+                        rememberPushAssociation(owner, repoName, projectName, branch)
+                        triggerVercelDeployIfRequested(owner, repoName)
                         _state.value = ProjectsUiState.PushSuccess(
                             owner = owner,
                             repo = repoName,
@@ -623,6 +738,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
         monitorJob?.cancel()
         when (_state.value) {
             is ProjectsUiState.ActionChoice -> _state.value = ProjectsUiState.Idle
+            is ProjectsUiState.AutomaticPush,
             is ProjectsUiState.CreateForm,
             is ProjectsUiState.SelectRepo,
             is ProjectsUiState.Explore -> {
@@ -654,6 +770,8 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
 
     private fun reset() {
         monitorJob?.cancel()
+        skipConfirmation = false
+        deployAfterPush = false
         currentZip = null
         currentAnalysis = null
         pendingCreate = null

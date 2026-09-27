@@ -3,21 +3,23 @@ package com.projectcenter.app.core.zip
 import java.io.File
 
 /**
- * Lists project files the same way for both the uploader and the pre-push diff check,
- * so "what will be uploaded" and "what will be compared against the repo" never disagree.
+ * Lists relative file paths under a project root (for replace-mode diffing).
  */
 object ProjectFileLister {
 
+    private val SKIP_DIRS = setOf(".git", "node_modules", "build", ".gradle", ".idea")
+
     fun listRelativePaths(root: File): List<String> {
-        val result = mutableListOf<String>()
+        if (!root.exists()) return emptyList()
+        val paths = mutableListOf<String>()
         root.walkTopDown()
-            .filter { it.isFile }
-            .forEach { file ->
-                val relative = file.relativeTo(root).path.replace('\\', '/')
-                if (relative.isNotBlank() && !relative.startsWith(".git/")) {
-                    result.add(relative)
+            .onEnter { dir -> dir.name !in SKIP_DIRS }
+            .forEach { f ->
+                if (f.isFile) {
+                    val rel = f.relativeTo(root).path.replace('\\', '/')
+                    paths += rel
                 }
             }
-        return result
+        return paths
     }
 }

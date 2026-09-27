@@ -71,6 +71,14 @@ fun VercelScreen() {
     var deployError by remember { mutableStateOf<String?>(null) }
     var deploySuccess by remember { mutableStateOf<String?>(null) }
 
+    // GitHub → Vercel: deploy any GitHub repo (create Vercel project if needed)
+    var showGithubDeploy by remember { mutableStateOf(false) }
+    var githubRepoInput by remember { mutableStateOf("") }
+    var githubDeployBranch by remember { mutableStateOf("main") }
+    var githubDeploying by remember { mutableStateOf(false) }
+    var githubDeployMsg by remember { mutableStateOf<String?>(null) }
+    var githubDeployErr by remember { mutableStateOf<String?>(null) }
+
     // Legacy single-project delete (type-to-confirm), still reachable per-row.
     var deleteTarget by remember { mutableStateOf<VercelProject?>(null) }
     var confirmName by remember { mutableStateOf("") }
@@ -132,6 +140,86 @@ fun VercelScreen() {
                         .onFailure { deployError = it.message ?: "Deployment failed" }
                     isDeploying = false
                 }
+            }
+        )
+    }
+
+    if (showGithubDeploy) {
+        AlertDialog(
+            onDismissRequest = { if (!githubDeploying) showGithubDeploy = false },
+            title = { Text("Deploy GitHub Project") },
+            text = {
+                Column {
+                    Text(
+                        "Enter owner/repo. If no Vercel project exists, one will be created automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = githubRepoInput,
+                        onValueChange = { githubRepoInput = it },
+                        label = { Text("GitHub repository") },
+                        placeholder = { Text("owner/repo") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = githubDeployBranch,
+                        onValueChange = { githubDeployBranch = it },
+                        label = { Text("Branch") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    githubDeployMsg?.let {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(it, color = MaterialTheme.colorScheme.primary)
+                    }
+                    githubDeployErr?.let {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val repo = githubRepoInput.trim()
+                        if (repo.isEmpty() || !repo.contains('/')) {
+                            githubDeployErr = "Use owner/repo format"
+                            return@Button
+                        }
+                        githubDeploying = true
+                        githubDeployErr = null
+                        githubDeployMsg = null
+                        scope.launch {
+                            val existing = vercelRepo.findLinkedProject(projects, repo)
+                            val label = if (existing != null) "Redeploying" else "Creating & deploying"
+                            githubDeployMsg = "$label…"
+                            vercelRepo.createOrDeployFromGitHub(
+                                repoFullName = repo,
+                                ref = githubDeployBranch.ifBlank { "main" }
+                            ).onSuccess {
+                                githubDeployMsg = "✅ Deployed: ${it.url ?: it.id}"
+                                loadProjects()
+                            }.onFailure {
+                                githubDeployErr = it.message ?: "Deploy failed"
+                                githubDeployMsg = null
+                            }
+                            githubDeploying = false
+                        }
+                    },
+                    enabled = !githubDeploying
+                ) {
+                    Text(if (githubDeploying) "Working…" else "Create & Deploy")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showGithubDeploy = false },
+                    enabled = !githubDeploying
+                ) { Text("Close") }
             }
         )
     }
@@ -198,6 +286,24 @@ fun VercelScreen() {
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        // GitHub → Vercel primary action
+        if (!selectMode) {
+            Button(
+                onClick = {
+                    showGithubDeploy = true
+                    githubDeployMsg = null
+                    githubDeployErr = null
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("▲  DEPLOY GitHub Project")
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },

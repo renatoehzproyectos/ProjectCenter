@@ -58,7 +58,7 @@ class VercelRepository(
     suspend fun getAuthenticatedUser(): Result<VercelUser> = withContext(Dispatchers.IO) {
         runCatching {
             val dto = api.getAuthenticatedUser().user
-            VercelUser(dto.id, dto.username, dto.email)
+            VercelUser(id = dto.id, username = dto.username, email = dto.email)
         }
     }
 
@@ -97,6 +97,54 @@ class VercelRepository(
                 )
             )
             VercelDeployment(dto.id, dto.url, dto.readyState, null)
+        }
+    }
+
+    /**
+     * Find existing Vercel project linked to [repoFullName], or create one, then deploy.
+     * Supports repositories that have never been deployed to Vercel.
+     */
+    suspend fun createOrDeployFromGitHub(
+        repoFullName: String,
+        projectName: String? = null,
+        ref: String = "main",
+        framework: String? = null
+    ): Result<VercelDeployment> = withContext(Dispatchers.IO) {
+        runCatching {
+            val name = projectName ?: repoFullName.substringAfterLast('/')
+            val existing = api.getProjects().projects.firstOrNull { p ->
+                val linked = p.link?.let { l ->
+                    if (l.org != null && l.repo != null) "${l.org}/${l.repo}" else l.repo
+                }
+                linked.equals(repoFullName, ignoreCase = true) ||
+                    p.name.equals(name, ignoreCase = true)
+            }
+            if (existing == null) {
+                api.createProject(
+                    CreateVercelProjectRequest(
+                        name = name,
+                        gitRepository = GitRepositoryDto(repo = repoFullName),
+                        framework = framework
+                    )
+                )
+            }
+            val dto = api.createDeployment(
+                CreateDeploymentRequest(
+                    name = name,
+                    gitSource = GitSourceDto(repo = repoFullName, ref = ref)
+                )
+            )
+            VercelDeployment(dto.id, dto.url, dto.readyState, null)
+        }
+    }
+
+    fun findLinkedProject(
+        projects: List<VercelProject>,
+        repoFullName: String
+    ): VercelProject? {
+        return projects.firstOrNull {
+            it.linkedRepo.equals(repoFullName, ignoreCase = true) ||
+                it.name.equals(repoFullName.substringAfterLast('/'), ignoreCase = true)
         }
     }
 

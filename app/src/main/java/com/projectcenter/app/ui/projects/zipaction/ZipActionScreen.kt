@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FolderZip
@@ -74,6 +75,13 @@ fun ZipActionScreen(
         )
         Spacer(modifier = Modifier.height(14.dp))
 
+        ActionCard(
+            icon = Icons.Default.Bolt,
+            title = "Automatic Push",
+            subtitle = "One-tap push using saved project → repository association",
+            onClick = { onActionSelected(ZipAction.AUTOMATIC_PUSH) }
+        )
+        Spacer(modifier = Modifier.height(10.dp))
         ActionCard(
             icon = Icons.Default.CreateNewFolder,
             title = "Create project",

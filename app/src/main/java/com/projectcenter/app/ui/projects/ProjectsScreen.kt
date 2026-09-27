@@ -128,7 +128,7 @@ fun ProjectsScreen(
             Text("Select project ZIP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "Create a repo, update an existing one, or explore files.",
+                "Automatic Push, create, update, or explore. Use the Files tab to organize Downloads.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

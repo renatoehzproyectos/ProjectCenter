@@ -6,25 +6,37 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 data class RecentZipFile(
-    val file: File,
     val name: String,
+    val path: String,
     val sizeBytes: Long,
     val lastModified: Long
 )
 
 /**
- * Scans /storage/emulated/0/Download for .zip files, most recent first.
+ * Scans /storage/emulated/0/Download for recent .zip files.
+ * Reused by Projects screen and File Manager — do not replace.
  */
 object RecentZipScanner {
 
-    suspend fun findRecentZips(limit: Int = 5): List<RecentZipFile> = withContext(Dispatchers.IO) {
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!downloadDir.exists() || !downloadDir.canRead()) return@withContext emptyList()
+    private val downloadDir: File
+        get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
 
-        downloadDir.listFiles { f -> f.isFile && f.extension.equals("zip", ignoreCase = true) }
+    suspend fun findRecentZips(limit: Int = 10): List<RecentZipFile> = withContext(Dispatchers.IO) {
+        val dir = downloadDir
+        if (!dir.exists() || !dir.canRead()) return@withContext emptyList()
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".zip", ignoreCase = true) }
             ?.sortedByDescending { it.lastModified() }
             ?.take(limit)
-            ?.map { RecentZipFile(it, it.name, it.length(), it.lastModified()) }
+            ?.map {
+                RecentZipFile(
+                    name = it.name,
+                    path = it.absolutePath,
+                    sizeBytes = it.length(),
+                    lastModified = it.lastModified()
+                )
+            }
             ?: emptyList()
     }
+
+    fun downloadsPath(): String = downloadDir.absolutePath
 }

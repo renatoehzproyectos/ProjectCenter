@@ -4,6 +4,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Public
@@ -31,6 +32,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.projectcenter.app.ui.browser.BrowserScreen
+import com.projectcenter.app.ui.filemanager.FileManagerScreen
 import com.projectcenter.app.ui.github.GitHubScreen
 import com.projectcenter.app.ui.projects.navigation.ProjectsFlow
 import com.projectcenter.app.ui.settings.SettingsScreen
@@ -38,6 +40,7 @@ import com.projectcenter.app.ui.vercel.VercelScreen
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     data object Projects : Screen("projects", "Projects", Icons.Filled.Home)
+    data object Files : Screen("files", "Files", Icons.Filled.Folder)
     data object GitHub : Screen("github", "GitHub", Icons.Outlined.Code)
     data object Vercel : Screen("vercel", "Vercel", Icons.Outlined.Bolt)
     data object Browser : Screen("browser", "Browser", Icons.Outlined.Public)
@@ -45,7 +48,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 }
 
 private val bottomNavItems = listOf(
-    Screen.Projects, Screen.GitHub, Screen.Vercel, Screen.Browser, Screen.Settings
+    Screen.Projects, Screen.Files, Screen.GitHub, Screen.Vercel, Screen.Settings
 )
 
 @Composable
@@ -105,6 +108,14 @@ fun ProjectCenterApp() {
             popExitTransition = { ExitTransition.None }
         ) {
             composable(Screen.Projects.route) { ProjectsFlow() }
+            composable(Screen.Files.route) {
+                FileManagerScreen(
+                    onOpenZip = { path ->
+                        // Navigate to Projects with file URI — user can push from there
+                        navController.navigate(Screen.Projects.route)
+                    }
+                )
+            }
             composable(Screen.GitHub.route) { GitHubScreen() }
             composable(Screen.Vercel.route) { VercelScreen() }
             composable(Screen.Browser.route) { BrowserScreen() }

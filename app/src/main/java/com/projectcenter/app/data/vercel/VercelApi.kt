@@ -32,6 +32,12 @@ interface VercelApi {
     suspend fun createDeployment(
         @Body body: CreateDeploymentRequest
     ): DeploymentResponseDto
+
+    /** Create a Vercel project linked to a GitHub repository. */
+    @POST("v10/projects")
+    suspend fun createProject(
+        @Body body: CreateVercelProjectRequest
+    ): VercelProjectDto
 }
 
 // ========== DTOs ==========
@@ -96,4 +102,17 @@ data class DeploymentResponseDto(
     val id: String,
     val url: String,
     @Json(name = "readyState") val readyState: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateVercelProjectRequest(
+    val name: String,
+    @Json(name = "gitRepository") val gitRepository: GitRepositoryDto? = null,
+    val framework: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GitRepositoryDto(
+    val type: String = "github",
+    val repo: String
 )

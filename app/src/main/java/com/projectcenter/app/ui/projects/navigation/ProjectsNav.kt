@@ -38,6 +38,17 @@ fun ProjectsFlow(
             )
         }
 
+        is ProjectsUiState.AutomaticPush -> {
+            com.projectcenter.app.ui.projects.automatic.AutomaticPushScreen(
+                zip = s.zip,
+                config = s.config,
+                onPush = { viewModel.onAutomaticPush() },
+                onPushAndDeploy = { viewModel.onAutomaticPushAndDeploy() },
+                onConfigure = { viewModel.onConfigureAutomaticPush() },
+                onBack = { viewModel.goBack() }
+            )
+        }
+
         is ProjectsUiState.CreateForm -> {
             CreateProjectScreen(
                 zip = s.zip,
