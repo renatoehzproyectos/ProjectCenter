@@ -136,7 +136,7 @@ fun VercelScreen() {
                 deploySuccess = null
                 scope.launch {
                     vercelRepo.deployFromGitHub(project.name, repoFullName, ref)
-                        .onSuccess { deploySuccess = "Deployment started: ${it.url}" }
+                        .onSuccess { deploySuccess = "Deployment started: ${it.url.orEmpty()}" }
                         .onFailure { deployError = it.message ?: "Deployment failed" }
                     isDeploying = false
                 }

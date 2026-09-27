@@ -50,7 +50,7 @@ fun PushConfirmationScreen(
                     InfoRow("Repository", cfg.name)
                     InfoRow("Visibility", if (cfg.isPrivate) "Private" else "Public")
                     if (!cfg.description.isNullOrBlank()) {
-                        InfoRow("Description", cfg.description)
+                        InfoRow("Description", cfg.description.orEmpty())
                     }
                 }
             }
