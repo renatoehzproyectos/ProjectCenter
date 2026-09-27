@@ -46,3 +46,19 @@
 - No push without saved association or explicit configure
 - Ambiguous roots still use RootSelectionScreen
 - Vercel never deletes projects as part of deploy
+
+## Build fix (Gradle wrapper)
+
+The original export was missing `gradle/wrapper/gradle-wrapper.jar`, which caused:
+
+```
+Error: Could not find or load main class org.gradle.wrapper.GradleWrapperMain
+```
+
+This is fixed: `gradle-wrapper.jar` and `gradlew.bat` are included. Use:
+
+```bash
+./gradlew assembleDebug
+```
+
+(or open the project in Android Studio). Requires Android SDK / `local.properties` with `sdk.dir=...`.
