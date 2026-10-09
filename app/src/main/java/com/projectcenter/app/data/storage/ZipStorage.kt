@@ -32,7 +32,7 @@ class ZipStorage(private val context: Context) {
 
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(dest).use { output ->
-                    input.copyTo(output)
+                    input.copyTo(output, 1024 * 1024)
                 }
             } ?: throw IllegalStateException("Cannot open ZIP")
 

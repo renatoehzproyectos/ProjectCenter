@@ -83,7 +83,8 @@ sealed class ProjectsUiState {
         val repo: String,
         val fullName: String,
         val commitSha: String?,
-        val hasWorkflows: Boolean
+        val hasWorkflows: Boolean,
+        val skippedFiles: List<String> = emptyList()
     ) : ProjectsUiState()
 
     data class Monitoring(
@@ -466,6 +467,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
             steps[4] = steps[4].copy(state = StepState.RUNNING)
             _state.value = ProjectsUiState.Pushing(steps = steps.toList(), message = "Uploading…")
 
+            var skipped: List<String> = emptyList()
             uploader.upload(
                 owner = owner,
                 repo = repoName,
@@ -481,6 +483,9 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                             fileProgress = progress.current to progress.total,
                             message = "Uploading files…"
                         )
+                    }
+                    is ProjectUploader.UploadProgress.Skipped -> {
+                        skipped = progress.files
                     }
                     is ProjectUploader.UploadProgress.CreatingTree,
                     is ProjectUploader.UploadProgress.Committing -> {
@@ -503,7 +508,8 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                             repo = repoName,
                             fullName = "$owner/$repoName",
                             commitSha = progress.commitSha,
-                            hasWorkflows = hasWorkflows
+                            hasWorkflows = hasWorkflows,
+                            skippedFiles = skipped
                         )
                     }
                     is ProjectUploader.UploadProgress.Error -> {

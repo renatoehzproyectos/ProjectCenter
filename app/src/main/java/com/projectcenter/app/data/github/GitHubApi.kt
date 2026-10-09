@@ -72,6 +72,14 @@ interface GitHubApi {
         @Body body: CreateBlobRequest
     ): BlobResponseDto
 
+    /** Streaming variant: body is a RequestBody written straight from disk (constant memory). */
+    @POST("repos/{owner}/{repo}/git/blobs")
+    suspend fun createBlobStream(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: okhttp3.RequestBody
+    ): BlobResponseDto
+
     @POST("repos/{owner}/{repo}/git/trees")
     suspend fun createTree(
         @Path("owner") owner: String,

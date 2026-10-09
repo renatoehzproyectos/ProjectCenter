@@ -24,6 +24,7 @@ fun PushSuccessScreen(
     repoFullName: String,
     commitSha: String?,
     hasWorkflows: Boolean,
+    skippedFiles: List<String> = emptyList(),
     onMonitorWorkflow: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -56,6 +57,17 @@ fun PushSuccessScreen(
                 text = "Commit ${commitSha.take(7)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (skippedFiles.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "${skippedFiles.size} file(s) over GitHub's 100 MB limit were not pushed " +
+                    "(use Git LFS for these):\n" + skippedFiles.take(8).joinToString("\n") +
+                    if (skippedFiles.size > 8) "\n…" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
             )
         }
 

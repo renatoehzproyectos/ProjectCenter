@@ -117,6 +117,7 @@ fun ProjectsFlow(
                 repoFullName = s.fullName,
                 commitSha = s.commitSha,
                 hasWorkflows = s.hasWorkflows,
+                skippedFiles = s.skippedFiles,
                 onMonitorWorkflow = { viewModel.startMonitoring() },
                 onDone = { viewModel.goBack() }
             )
