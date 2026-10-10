@@ -56,7 +56,7 @@ fun PushProgressScreen(
         if (fileProgress != null && !isFinished && !isError) {
             val (current, total) = fileProgress
             Text(
-                text = "Uploading files… $current / $total",
+                text = "Uploading files… ${if (total > 0) current * 100 / total else 0}%",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(8.dp))

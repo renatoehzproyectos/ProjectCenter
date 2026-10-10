@@ -120,7 +120,7 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
     private val tokenStore = SecureTokenStore(application)
     private val githubRepo = GitHubRepository(tokenStore)
     private val zipStorage = ZipStorage(application)
-    private val uploader = ProjectUploader(githubRepo.getApi())
+    private val uploader = ProjectUploader(githubRepo.getApi()) { tokenStore.getAccessToken() }
     private val workflowMonitor = WorkflowMonitor(githubRepo)
     private val artifactManager = ArtifactManager(
         githubRepo.getApi(),
@@ -482,6 +482,13 @@ class ProjectsViewModel(application: Application) : AndroidViewModel(application
                             steps = steps.toList(),
                             fileProgress = progress.current to progress.total,
                             message = "Uploading files…"
+                        )
+                    }
+                    is ProjectUploader.UploadProgress.Stage -> {
+                        _state.value = ProjectsUiState.Pushing(
+                            steps = steps.toList(),
+                            fileProgress = progress.percent to 100,
+                            message = progress.label
                         )
                     }
                     is ProjectUploader.UploadProgress.Skipped -> {

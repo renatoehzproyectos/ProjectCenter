@@ -201,6 +201,8 @@ class GitHubRepository(
     // Raw access for advanced upload / download later
     fun getApi(): GitHubApi = api
 
+    fun getAccessToken(): String? = tokenStore.getAccessToken()
+
     private fun RepositoryDto.toDomain() = Repository(
         id = id,
         name = name,

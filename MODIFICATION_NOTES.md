@@ -62,3 +62,11 @@ This is fixed: `gradle-wrapper.jar` and `gradlew.bat` are included. Use:
 ```
 
 (or open the project in Android Studio). Requires Android SDK / `local.properties` with `sdk.dir=...`.
+
+## Fast push (packfile) — large / many-file projects
+- `data/github/GitPack.java`: builds a git packfile (blobs, trees, commit) from disk, streaming + multi-threaded.
+  Verified against real git (`receive-pack`, `fsck --strict`, content diff).
+- `ProjectUploader`: pushes the pack in ONE request to `git-receive-pack` (same as `git push`). No per-file API
+  calls, no rate limits, constant memory. Falls back to the old Git Data API path only for <= 3000 files.
+- Files > 100 MB are skipped (GitHub hard limit) and listed on the success screen.
+- Single push limit ~2 GB compressed.

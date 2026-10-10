@@ -1,7 +1,15 @@
 package com.projectcenter.app.data.github
 
 import android.util.Base64
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
@@ -25,11 +33,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * Uses [channelFlow] so progress can be emitted safely from concurrent workers.
  */
 class ProjectUploader(
-    private val api: GitHubApi
+    private val api: GitHubApi,
+    private val tokenProvider: () -> String? = { null }
 ) {
 
     sealed class UploadProgress {
         data class Preparing(val message: String) : UploadProgress()
+        /** Fast-push stage with a 0..100 percentage (hashing, compressing, sending). */
+        data class Stage(val label: String, val percent: Int) : UploadProgress()
         data class UploadingFiles(val current: Int, val total: Int) : UploadProgress()
         data class CreatingTree(val message: String) : UploadProgress()
         data class Committing(val message: String) : UploadProgress()
@@ -50,22 +61,40 @@ class ProjectUploader(
         try {
             send(UploadProgress.Preparing("Collecting files…"))
 
-            val allFiles = collectFiles(projectRoot)
-                .filterNot { it.relativePath.startsWith(".git/") }
+            val allPaths = com.projectcenter.app.core.zip.ProjectFileLister.listRelativePaths(projectRoot)
+                .filterNot { it.startsWith(".git/") }
             // GitHub hard-rejects any single file over 100 MB (Git LFS is required for those).
-            val (tooBig, files) = allFiles.partition { it.file.length() > GITHUB_MAX_FILE_BYTES }
-            if (tooBig.isNotEmpty()) {
-                send(UploadProgress.Skipped(tooBig.map {
-                    "${it.relativePath} (${it.file.length() / (1024 * 1024)} MB)"
-                }))
+            val tooBig = ArrayList<String>()
+            val okPaths = ArrayList<String>(allPaths.size)
+            for (p in allPaths) {
+                val len = File(projectRoot, p).length()
+                if (len > GITHUB_MAX_FILE_BYTES) tooBig.add("$p (${len / (1024 * 1024)} MB)")
+                else okPaths.add(p)
             }
-            if (files.isEmpty()) {
+            if (tooBig.isNotEmpty()) send(UploadProgress.Skipped(tooBig))
+            if (okPaths.isEmpty()) {
                 send(UploadProgress.Error("No files found in project root"))
                 return@channelFlow
             }
 
             send(UploadProgress.Preparing("Preparing repository…"))
             ensureRepoHasCommit(owner, repo, branch)
+
+            // Fast path: build a git packfile locally and push it in ONE request (like `git push`).
+            // No per-file API calls, no rate limits, constant memory — works for 200k+ files.
+            try {
+                val sha = pushViaPack(owner, repo, projectRoot, okPaths, branch, commitMessage)
+                send(UploadProgress.Success(sha))
+                return@channelFlow
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Only small projects can realistically use the per-file API fallback.
+                if (okPaths.size > API_FALLBACK_MAX_FILES) throw e
+                send(UploadProgress.Preparing("Fast push failed (${e.message}); using API fallback…"))
+            }
+
+            val files = okPaths.map { FileEntry(File(projectRoot, it), it) }
 
             val total = files.size
             val done = AtomicInteger(0)
@@ -167,6 +196,165 @@ class ProjectUploader(
             send(UploadProgress.Error(friendlyError(e), e))
         }
     }.flowOn(Dispatchers.IO)
+
+    /** Splits git pkt-line framing (4 hex length prefix) into text lines; flush packets are skipped. */
+    private fun parsePktLines(text: String): List<String> {
+        val out = ArrayList<String>()
+        var i = 0
+        while (i + 4 <= text.length) {
+            val len = text.substring(i, i + 4).toIntOrNull(16) ?: break
+            if (len == 0) { i += 4; continue }
+            if (len < 4 || i + len > text.length) break
+            out.add(text.substring(i + 4, i + len).trim())
+            i += len
+        }
+        return out
+    }
+
+    private val gitClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(180, TimeUnit.SECONDS)
+            .readTimeout(900, TimeUnit.SECONDS) // server unpacks a big pack before replying
+            .build()
+    }
+
+    private suspend fun resolveHeadRef(owner: String, repo: String, preferred: String): Pair<String, String>? {
+        for (b in listOf(preferred, "main", "master").distinct()) {
+            try {
+                return api.getRef(owner, repo, b).`object`.sha to b
+            } catch (_: Exception) {
+            }
+        }
+        return null
+    }
+
+    private suspend fun authorLine(): String = try {
+        val u = api.getAuthenticatedUser()
+        val name = (u.name ?: u.login).replace(Regex("[<>\\n]"), "").ifBlank { u.login }
+        "$name <${u.id}+${u.login}@users.noreply.github.com>"
+    } catch (_: Exception) {
+        "Project Center <noreply@projectcenter.app>"
+    }
+
+    /**
+     * Builds a packfile on disk (streaming, parallel) and pushes it with git smart-HTTP
+     * (git-receive-pack). Returns the new commit sha.
+     */
+    private suspend fun ProducerScope<UploadProgress>.pushViaPack(
+        owner: String,
+        repo: String,
+        root: File,
+        paths: List<String>,
+        branch: String,
+        message: String
+    ): String {
+        val (parentSha, targetBranch) = resolveHeadRef(owner, repo, branch)
+            ?: throw IllegalStateException("Repository still has no branch after bootstrap")
+        val token = tokenProvider() ?: throw IllegalStateException("Not signed in to GitHub")
+        val author = authorLine()
+        val workDir = java.nio.file.Files.createTempDirectory("pcpack").toFile()
+        val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+
+        var pack: GitPack.Result? = null
+        try {
+            send(UploadProgress.Stage("Preparing ${paths.size} files…", 0))
+            pack = withContext(Dispatchers.IO) {
+                GitPack.build(
+                    root, paths, parentSha, author, message, workDir, threads,
+                    GitPack.Listener { label, done, total ->
+                        trySend(UploadProgress.Stage(label, if (total > 0) (done * 100 / total).toInt() else 0))
+                    },
+                    GitPack.Cancel { !isActive }
+                )
+            }
+            val built = pack!!
+            if (built.packLength() > MAX_PACK_BYTES) {
+                throw IllegalStateException(
+                    "Compressed project is ${built.packLength() / (1024 * 1024)} MB; GitHub rejects " +
+                        "single pushes over ~2 GB. Split the project into smaller parts."
+                )
+            }
+
+            val cmd = "$parentSha ${built.commitSha} refs/heads/$targetBranch\u0000 report-status agent=projectcenter"
+            val cmdBytes = cmd.toByteArray(Charsets.UTF_8)
+            val head = String.format("%04x", cmdBytes.size + 4).toByteArray(Charsets.US_ASCII) +
+                cmdBytes + "0000".toByteArray(Charsets.US_ASCII)
+            val packLen = built.packLength()
+            val scope = this
+
+            val body = object : RequestBody() {
+                override fun contentType() = "application/x-git-receive-pack-request".toMediaType()
+                override fun contentLength(): Long = head.size + packLen
+                override fun writeTo(sink: BufferedSink) {
+                    sink.write(head)
+                    var sent = 0L
+                    var lastPct = -1
+                    val out = sink.outputStream()
+                    val counting = object : java.io.OutputStream() {
+                        override fun write(b: Int) {
+                            out.write(b); sent++
+                        }
+
+                        override fun write(b: ByteArray, off: Int, len: Int) {
+                            out.write(b, off, len)
+                            sent += len
+                            val pct = (sent * 100 / packLen).toInt().coerceAtMost(100)
+                            if (pct != lastPct) {
+                                lastPct = pct
+                                val mb = sent / (1024 * 1024)
+                                scope.trySend(UploadProgress.Stage("Sending to GitHub… $mb / ${packLen / (1024 * 1024)} MB", pct))
+                            }
+                        }
+
+                        override fun flush() = out.flush()
+                    }
+                    built.writePack(counting)
+                    scope.trySend(UploadProgress.Committing("Finalizing on GitHub…"))
+                }
+            }
+
+            val request = Request.Builder()
+                .url("https://github.com/$owner/$repo.git/git-receive-pack")
+                .header("Authorization", Credentials.basic("x-access-token", token))
+                .header("Accept", "application/x-git-receive-pack-result")
+                .header("User-Agent", "git/2.43.0")
+                .post(body)
+                .build()
+
+            withContext(Dispatchers.IO) {
+                gitClient.newCall(request).execute().use { resp ->
+                    val text = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) {
+                        val hint = when (resp.code) {
+                            401, 403 -> "Permission denied (HTTP ${resp.code}). The token needs the `repo` scope " +
+                                "(plus `workflow` if the project contains .github/workflows)."
+                            404 -> "Repository not found (HTTP 404)."
+                            else -> "GitHub rejected the push (HTTP ${resp.code})."
+                        }
+                        throw IllegalStateException(hint)
+                    }
+                    val lines = parsePktLines(text)
+                    val ng = lines.firstOrNull { it.startsWith("ng ") }
+                    when {
+                        lines.none { it.startsWith("unpack ok") } ->
+                            throw IllegalStateException(
+                                "GitHub could not unpack the push: ${(lines.firstOrNull() ?: text).take(300).trim()}"
+                            )
+                        ng != null ->
+                            throw IllegalStateException("GitHub rejected the update: ${ng.take(300)}")
+                        lines.none { it.startsWith("ok refs/heads/$targetBranch") } ->
+                            throw IllegalStateException("GitHub did not confirm the update: ${text.take(300).trim()}")
+                    }
+                }
+            }
+            return built.commitSha
+        } finally {
+            pack?.close()
+            workDir.deleteRecursively()
+        }
+    }
 
     /**
      * Builds the tree in bounded chunks (entry count and inline-content bytes), chaining each
@@ -390,5 +578,7 @@ class ProjectUploader(
         private const val TREE_CHUNK_ENTRIES = 2_000
         private const val TREE_CHUNK_BYTES = 2L * 1024 * 1024
         private const val MAX_RETRIES = 5
+        private const val API_FALLBACK_MAX_FILES = 3_000
+        private const val MAX_PACK_BYTES = 1_900L * 1024 * 1024
     }
 }
